@@ -1,0 +1,7 @@
+<resources>
+    <style name="Theme.FeudCollector" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_bg</item>
+        <item name="android:colorPrimary">@color/brand</item>
+        <item name="android:colorAccent">#2D43A8</item>
+    </style>
+</resources>

@@ -4,6 +4,8 @@ import * as L from "./logic.js";
 const STORE_KEY = "feud.data.v1";
 const PREFS_KEY = "feud.prefs.v1";
 const SESSION_KEY = "feud.session.v1";
+// Set by the Android app (android/), absent in the browser.
+const Native = window.AndroidBridge || null;
 const GENDER_NAME = { W: "Woman", M: "Man" };
 const GENDER_PLURAL = { W: "Women", M: "Men" };
 const g2c = (g) => (g === "W" ? "w" : "m");
@@ -140,7 +142,7 @@ window.addEventListener("hashchange", () => {
 // ---------- home ----------
 function viewHome() {
   const people = respondentIds().size;
-  const isStandalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  const isStandalone = Native || matchMedia("(display-mode: standalone)").matches || navigator.standalone;
   const items = QUESTIONS.map((q) => {
     const c = L.countBy(db.answers, q.id);
     const top = L.groupAnswers(db.answers, db.aliases, q.id, "all").slice(0, 3).map((g) => g.label);
@@ -475,17 +477,19 @@ function viewData() {
 
       <div class="section-title">Export for analysis</div>
       <div class="card data-actions">
-        <button class="btn primary block" data-act="export-csv">Export CSV (one row per answer)</button>
+        <button class="btn primary block" data-act="export" data-kind="csv" data-dest="share">${Native ? "Share CSV…" : "Export CSV (one row per answer)"}</button>
+        ${Native ? '<button class="btn block" data-act="export" data-kind="csv" data-dest="downloads">Save CSV to Downloads</button>' : ""}
         <p class="note" style="margin:0">Columns: <code>respondent</code>, <code>question_no</code>, <code>gender</code>, <code>answer</code>, <code>answer_normalised</code>, <code>category</code>, <code>timestamp</code>. Open it in Excel or <code>pandas.read_csv</code>.</p>
       </div>
 
       <div class="section-title">Backup</div>
       <div class="card data-actions">
-        <button class="btn block" data-act="export-json">Save backup file (.json)</button>
+        <button class="btn block" data-act="export" data-kind="json" data-dest="share">${Native ? "Share backup file (.json)…" : "Save backup file (.json)"}</button>
+        ${Native ? '<button class="btn block" data-act="export" data-kind="json" data-dest="downloads">Save backup to Downloads</button>' : ""}
         <button class="btn block" data-act="import" data-mode="merge">Import backup, keep current answers</button>
         <button class="btn block" data-act="import" data-mode="replace">Restore backup, replace everything</button>
         <input type="file" id="import-file" accept="application/json,.json" hidden>
-        <p class="note" style="margin:0">Answers are stored only on this phone. Save a backup now and then (to Files, Drive or e-mail) so nothing is lost if the browser data is cleared.</p>
+        <p class="note" style="margin:0">Answers are stored only on this phone. Save a backup now and then (to Files, Drive or e-mail) so nothing is lost if ${Native ? "the app is uninstalled" : "the browser data is cleared"}.</p>
       </div>
 
       <div class="section-title">Danger zone</div>
@@ -518,7 +522,20 @@ function viewData() {
 }
 let importMode = "merge";
 
-async function shareOrDownload(filename, mime, content) {
+async function shareOrDownload(filename, mime, content, dest = "share") {
+  if (Native) {
+    if (dest === "downloads") {
+      const err = Native.saveToDownloads(filename, mime, content);
+      if (err) {
+        alert(`Could not save: ${err}`);
+        return false;
+      }
+      toast(`Saved to Downloads/FamilyFeud/${filename}`);
+      return true;
+    }
+    Native.shareFile(filename, mime, content);
+    return true;
+  }
   const blob = new Blob([content], { type: mime });
   const file = new File([blob], filename, { type: mime });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -685,12 +702,14 @@ const actions = {
   "close-sheet"() {
     closeSheet();
   },
-  async "export-csv"() {
-    await shareOrDownload(`family-feud-answers-${stamp()}.csv`, "text/csv", L.toCSV(db.answers, db.aliases, QUESTIONS));
-  },
-  async "export-json"() {
+  async export(el) {
+    const dest = el.dataset.dest;
+    if (el.dataset.kind === "csv") {
+      await shareOrDownload(`family-feud-answers-${stamp()}.csv`, "text/csv", L.toCSV(db.answers, db.aliases, QUESTIONS), dest);
+      return;
+    }
     const payload = JSON.stringify({ app: "feud-collector", version: 1, exportedAt: new Date().toISOString(), questions: QUESTIONS, answers: db.answers, aliases: db.aliases }, null, 2);
-    if (await shareOrDownload(`family-feud-backup-${stamp()}.json`, "application/json", payload)) {
+    if (await shareOrDownload(`family-feud-backup-${stamp()}.json`, "application/json", payload, dest)) {
       db.lastBackup = new Date().toISOString();
       save();
       viewData();
@@ -753,7 +772,25 @@ window.addEventListener("beforeinstallprompt", (e) => {
   if (current.view === "home") viewHome();
 });
 
-if ("serviceWorker" in navigator && location.protocol !== "file:") {
+// Android back button: close what is open, else go one level up. Returns false on the home screen so the app exits.
+window.feudBack = () => {
+  if (!$("#sheet").hidden) {
+    closeSheet();
+    return true;
+  }
+  if (current.view === "stats" && selectMode) {
+    selectMode = false;
+    selected = new Set();
+    viewStats(current.id);
+    return true;
+  }
+  if (current.view === "stats") go(`#/q/${current.id}`);
+  else if (current.view === "q" || current.view === "data") go("#/");
+  else return false;
+  return true;
+};
+
+if (!Native && "serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
 
