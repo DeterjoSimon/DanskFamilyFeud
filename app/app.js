@@ -91,7 +91,7 @@ function toast(msg, opts = {}) {
       el.hidden = true;
     };
   }
-  toastTimer = setTimeout(() => (el.hidden = true), opts.undo ? 5000 : 2600);
+  toastTimer = setTimeout(() => (el.hidden = true), opts.ms ?? (opts.undo ? 4000 : 2600));
 }
 
 function topbar({ left, title, sub, right = "" }) {
@@ -109,6 +109,7 @@ function addAnswer(qid, g, text) {
   save();
   if (navigator.vibrate) navigator.vibrate(15);
   toast(`Added “${t}” · ${GENDER_NAME[g]}`, {
+    ms: 1000,
     undo: () => {
       removeAnswer(a.id);
       rerender();
@@ -600,7 +601,7 @@ const actions = {
     const no = session.no;
     session = null;
     saveSession();
-    toast(`Person #${no} done · ${n} answer${n === 1 ? "" : "s"} saved`);
+    toast(`Person #${no} done · ${n} answer${n === 1 ? "" : "s"} saved`, { ms: 3000 });
     go("#/");
   },
   go(el) {
