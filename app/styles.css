@@ -40,6 +40,8 @@
 }
 
 * { box-sizing: border-box; }
+/* The hidden attribute must win over display rules (e.g. .toast is display:flex). */
+[hidden] { display: none !important; }
 
 html, body {
   margin: 0;
